@@ -1,0 +1,9 @@
+.venv/
+.env
+__pycache__
+.vscode/
+COMPLEMENTOS/
+COMPRIMIDOS/
+DESCOMPRIMIDOS/
+utils/
+automation.log
