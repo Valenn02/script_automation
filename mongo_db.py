@@ -19,7 +19,8 @@ class MongoDBHandler:
                 uri: str,
                 db_name: str,
                 collection_tar: str,
-                collection_json: str,) -> None:
+                collection_json: str
+                ) -> None:
         """
         Inicializa el manejador de MongoDB.
         
@@ -44,7 +45,7 @@ class MongoDBHandler:
             MongoDBConnectionError: Error personalizado para problemas de conexion.
         """
         try:
-            self.client = MongoClient(self.uri, serverSelectionTimeoutMS=3000)
+            self.client = MongoClient(self.uri, serverSelectionTimeoutMS=5000)
             self.client.admin.command("ping")
             logging.info("Conexion a MongoDB exitosa.")
         except (ServerSelectionTimeoutError, ConnectionFailure, PyMongoError) as e:
