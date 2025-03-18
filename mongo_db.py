@@ -1,152 +1,191 @@
+from standard_response import StandardResponse
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError, ConnectionFailure, ServerSelectionTimeoutError, OperationFailure
-from typing import Dict, List, Any, Optional
-import logging
+from typing import Dict, List, Any
 
 class MongoDBHandler:
     """
-    Clase para interactuar y operar con la base de datos MongoDB.
-    
+    Clase handler para interactuar y operar con la base de datos MongoDB.
+
     Attributes:
-        uri: Direccion URI de conexion.
-        db_name: Nombre de la base de datos.
-        collection_tar: Nombre de la coleccion para guardar metadatos de archivos TAR.
-        collection_json: Nombre de la coleccion para guardar metadatos de los archivos JSON.
-        client: Cliente de MongoDB (inicializado en 'conectar').
+        client (MongoClient): Cliente de conexion a MongoDB.
+        db_name (str): Nombre de la base de datos en MongoDB.
+        collection_tar (str): Nombre de la coleccion para guardar metadatos de archivos TAR.
+        collection_json (str): Nombre de la coleccion para guardar metadatos de los archivos JSON.
     """
-    
+
     def __init__(self,
-                uri: str,
+                mongo_uri: str,
                 db_name: str,
                 collection_tar: str,
-                collection_json: str
+                collection_json: str,
                 ) -> None:
         """
-        Inicializa el manejador de MongoDB.
-        
-        Args:
-            uri (str): URI de conexion a MongoDB.
-            db_name (str): Nombre de la base de datos.
-            collection_tar (str): Nombre de la coleccion para TAR procesados.
-            collection_json (str): Nombre de la coleccion para JSON procesados.
-            client (MongoClient): Cliente de MongoDB.
-        """
-        self.uri = uri
-        self.db_name = db_name
-        self.collection_tar = collection_tar
-        self.collection_json = collection_json
-        self.client: Optional[MongoClient] = None
+        Constructor para la clase MongoDBHandler.
 
-    def conectar(self) -> None:
+        Parameters:
+            mongo_uri (str): Direccion URL para la conexion a MongoDB.
+            db_name (str): Nombre de la base de datos en MongoDB.
+            collection_tar (str): Nombre de la coleccion para guardar metadatos de archivos TAR.
+            collection_json (str): Nombre de la coleccion para guardar metadatos de los archivos JSON.
         """
-        Conecta a MongoDB.
-        
+        self.client: MongoClient=MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+        self.db_name = self.client[db_name]
+        self.collection_tar = self.db_name[collection_tar]
+        self.collection_json = self.db_name[collection_json]
+
+    def check_connect(self) -> StandardResponse:
+        """
+        Comprueba la conexion con la base de datos de MongoDB.
+
+        Returns:
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
+
         Raises:
-            MongoDBConnectionError: Error personalizado para problemas de conexion.
+            ServerSelectionTimeoutError: Si el servidor no responde en el tiempo esperado.
+            ConnectionFailure: Si no se puede establecer una conexion con el servidor.
+            PyMongoError: Para cualquier otro error relacionado con PyMongo.
         """
         try:
-            self.client = MongoClient(self.uri, serverSelectionTimeoutMS=5000)
             self.client.admin.command("ping")
-            logging.info("Conexion a MongoDB exitosa.")
+            return StandardResponse(
+                success=True,
+                message="Conexion exitosa con MongoDB.",
+                )
         except (ServerSelectionTimeoutError, ConnectionFailure, PyMongoError) as e:
-            logging.error(f"No se pudo conectar a MongoDB: {e}")
-            raise MongoDBConnectionError(f"No se pudo conectar a MongoDB: {e}") from e
+            return StandardResponse(
+                success=True,
+                message="No se pudo conectar a MongoDB.",
+                error_details=str(e)
+                )
 
-    def guardar_diccionarios(self, documentos: List[Dict[str, Any]]) -> List[Any]:
+    def save_documents(self, documents: List[Dict[str, Any]]) -> StandardResponse:
         """
-        Guarda los diccionarios dentro de una lista en una coleccion de MongoDB.
-        
-        Args:
-            documentos (List[Dict[str,Any]]): Lista de diccionarios a guardar.
-        
+        Guarda los documentos en una coleccion de MongoDB.
+
+        Parameters:
+            documents (List[Dict[str, Any]]): Lista de diccionarios a guardar.
+
         Returns:
-            List[Any]: Lista de los IDs de los diccionarios guardados.
-        
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
+
         Raises:
-            MongoDBOperationError: Error personalizado para problemas de guardado de datos.
+            OperationFailure: Si falla la operacion con la base de datos.
+            PyMongoError: Para cualquier otro error relacionado con PyMongo.
         """
         if not self.client:
-            raise MongoDBConnectionError("No hay una conexion activa a MongoDB.")
-        
-        try:
-            db = self.client[self.db_name]
-            coleccion = db[self.collection_json]
-            resultado = coleccion.insert_many(documentos)
-            logging.info(f"Se insertaron {len(resultado.inserted_ids)} documentos en '{self.collection_json}'")
-            return resultado.inserted_ids
-        except (OperationFailure, PyMongoError) as e:
-            logging.error(f"No se pudo realizar la operacion: {e}") 
-            raise MongoDBOperationError(f"Error al guardar documentos: {e}") from e
+            return StandardResponse(
+                success=False,
+                message="No hay una conexion establecida con MongoDB.",
+            )
 
-    def verificar_archivo_procesado(self, nombre_archivo: str) -> bool:
+        if not documents:
+            return StandardResponse(
+                success=True,
+                message="Buffer de documentos vacio. No se realizaron inserciones."
+            )
+
+        try:
+            resultado = self.collection_json.insert_many(documents, ordered=False)
+            return StandardResponse(
+                success=True,
+                data=resultado.inserted_ids,
+                message=f"Se insertaron {len(resultado.inserted_ids)} documentos en '{self.collection_json.name}'"
+            )
+        except (OperationFailure, PyMongoError) as e:
+            return StandardResponse(
+                success=False,
+                message="Error al guardar los documentos en MongoDB.",
+                error_details=str(e)
+            )
+
+    def check_processed_tar_file(self, file_name: str) -> StandardResponse:
         """
-        Verifica en MongoDB si una archivo TAR fue procesado.
-        
-        Args:
-            nombre_archivo (str): Nombre del archivo a verificar.
-        
+        Verifica en MongoDB si un archivo TAR ya fue procesado.
+
+        Parameters:
+            file_name (str): Nombre del archivo TAR a verificar.
+
         Returns:
-            bool: True si el archivo TAR ya fue procesado, False en caso contrario.
-        
-        Raises:
-            MongoDBOperationError: Error personalizado para problemas de consulta.
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
+
+        Exceptions:
+            OperationFailure: Si falla la operacion con la base de datos.
+            PyMongoError: Para cualquier otro error relacionado con PyMongo.
         """
         if not self.client:
-            raise MongoDBConnectionError("No hay una conexion activa a MongoDB.")
-        
-        try:
-            db = self.client[self.db_name]
-            coleccion = db[self.collection_tar]
-            resultado = coleccion.find_one({"nombre": nombre_archivo})
-            logging.info(f"Verificando si '{nombre_archivo}' ya fue procesado.")
-            return resultado is not None
-        except (OperationFailure, PyMongoError) as e:
-            logging.error(f"Error al verificar el archivo '{nombre_archivo}' en MongoDB: {e}")
-            raise MongoDBOperationError(f"Error al verificar archivo procesado: {e}") from e
+            return StandardResponse(
+                success=False,
+                message="No hay una conexion establecida con MongoDB.",
+            )
 
-    def guardar_tar_procesado(self, diccionario_data: Dict[str, Any]) -> int:
+        try:
+            resultado = self.collection_tar.find_one({"nombre": file_name})
+            mensaje1 = f"El archivo '{file_name}' SI fue procesado previamente."
+            mensaje2 = f"El archivo '{file_name}' NO fue procesado previamente."
+            return StandardResponse(
+                success=True,
+                data=resultado,
+                message=mensaje1 if resultado else mensaje2
+            )
+        except (OperationFailure, PyMongoError) as e:
+            return StandardResponse(
+                success=False,
+                message=f"Error al verificar el archivo '{file_name}' en MongoDB.",
+                error_details=str(e)
+            )
+
+    def save_processed_tar_file(self, diccionario_data: Dict[str, Any]) -> StandardResponse:
         """
-        Guarda metadatos del archivo TAR procesado.
-        
-        Args:
-            nombre_carpeta (str): Nombre del archivo TAR procesado.
-        
+        Guarda metadatos del archivo TAR procesado en MongoDB.
+
+        Parameters:
+            diccionario_data (Dict[str, Any]): Diccionario con metadatos del archivo TAR.
+
         Returns:
-            int: ID del diccionario guardado.
-        
-        Raises:
-            MongoDBOperationError: Error personalizado para problemas de consulta.
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
+
+        Exceptions:
+            OperationFailure: Si falla la operacion con la base de datos.
+            PyMongoError: Para cualquier otro error relacionado con PyMongo.
         """
         if not self.client:
-            raise MongoDBConnectionError("No hay una conexion activa a MongoDB.")
-        
-        try:
-            db = self.client[self.db_name]
-            coleccion = db[self.collection_tar]
-            resultado = coleccion.insert_one(diccionario_data)
-            logging.info(f"Metadatos del archivo TAR '{diccionario_data['nombre']}' guardados en '{self.collection_tar}'.")
-            return resultado.inserted_id
-        except (OperationFailure, PyMongoError) as e:
-            logging.error("Error al guardar metadatos del TAR en MongoDB: {e}")
-            raise MongoDBOperationError(f"Error al guardar metadatos de TAR: {e}") from e
+            return StandardResponse(
+                success=False,
+                message="No hay una conexion establecida con MongoDB.",
+            )
 
-    def cerrar_conexion(self) -> None:
+        try:
+            resultado = self.collection_tar.insert_one(diccionario_data)
+            return StandardResponse(
+                success=True,
+                data=resultado,
+                message=f"Metadatos del archivo TAR '{diccionario_data['nombre']}' guardados en '{self.collection_tar.name}'."
+            )
+        except (OperationFailure, PyMongoError) as e:
+            return StandardResponse(
+                success=False,
+                message="Error al guardar metadatos del archivo TAR en MongoDB.",
+                error_details=str(e)
+            )
+
+    def disconnect(self) -> StandardResponse:
         """
         Cierra la conexion con MongoDB.
+
+        Returns:
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
         """
-        if self.client:
-            self.client.close()
-            logging.info("Conexion a MongoDB cerrada.")
-
-# --- excepciones personalizadas ---
-class MongoDBError(Exception):
-    """Excepcion base para errores relacionados con MongoDB."""
-    pass
-
-class MongoDBConnectionError(MongoDBError):
-    """Excepcion para errores de conexion a MongoDB."""
-    pass
-
-class MongoDBOperationError(MongoDBError):
-    """Excepcion para errores de conexion a MongoDB."""
-    pass
+        try:
+            if self.client:
+                self.client.close()
+            return StandardResponse(
+                success=True,
+                message="Conexion cerrada a MongoDB."
+            )
+        except (PyMongoError) as e:
+            return StandardResponse(
+                success=False,
+                message="No se pudo cerrar la conexion a MongoDB.",
+                error_details=str(e)
+            )

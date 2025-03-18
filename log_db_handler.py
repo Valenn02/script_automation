@@ -1,25 +1,29 @@
-import logging
-import sys
+from typing import Dict, List, Any
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError, OperationFailure, BulkWriteError
 from datetime import datetime
+import logging
+import time
 
 class MongoLoggingDBHandler(logging.Handler):
     """
-    Handler personalizado para enviar logs a MongoDB.
+    Clase handler personalizada para enviar logs a MongoDB.
 
     Attributes:
-        mongo_uri (str): Direccion URL para la conexion a MongoDB.
+        client (MongoClient): Cliente de conexion a conexion a MongoDB.
         db_name (str): Nombre de la base de datos en MongoDB.
-        collection_name (str): Nombre de la coleccion.
-        buffer (list): Lista para almacenar logs.
+        collection_logs (str): Nombre de la coleccion para guardar logs.
+        buffer (List[Dict[str, Any]]): Buffer para almacenar logs.
+        buffer_size (int): Tamanio del buffer (default=30).
+        waiting_time (float): Tiempo en segundos de espera entre intentos (default=1).
     """
 
     def __init__(self,
-                 mongo_uri: str,
-                 db_name: str,
-                 collection_name: str,
-                 buffer_size: int=50,
+                mongo_uri: str,
+                db_name: str,
+                collection_logs: str,
+                buffer_size: int=30,
+                waiting_time: float=1.0
                 ) -> None:
         """
         El constructor para la clase MongoLoggingDBHandler.
@@ -27,14 +31,17 @@ class MongoLoggingDBHandler(logging.Handler):
         Parameters:
             mongo_uri (str): Direccion URL para la conexion a MongoDB.
             db_name (str): Nombre de la base de datos en MongoDB.
-            collection_name (str): Nombre de la coleccion.
+            collection_logs (str): Nombre de la coleccion.
+            buffer_size (int): Tamanio del buffer.
+            waiting_time (float): Tiempo en segundos de espera entre intentos (default=1).
         """
         super().__init__()
-        self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-        self.db = self.client[db_name]
-        self.collection = self.db[collection_name]
-        self.buffer = []
-        self.buffer_size: int=buffer_size
+        self.client: MongoClient=MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+        self.db_name = self.client[db_name]
+        self.collection_logs = self.db_name[collection_logs]
+        self.buffer: List[Dict[str, Any]]=[]
+        self.buffer_size = buffer_size
+        self.waiting_time = waiting_time
 
     def emit(self, record: logging.LogRecord) -> None:
         """
@@ -62,19 +69,19 @@ class MongoLoggingDBHandler(logging.Handler):
         except Exception as e:
             print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - ERROR - {__name__} - Error inesperado al procesar el log: {e}")
 
-    def flush(self, max_attempts: int=3):
+    def flush(self, max_attempts: int=3) -> None:
         """
-        Vacia el buffer e inserta estos logs en MongoDB
+        Vacia el buffer e inserta estos logs en MongoDB.
 
         Parameters:
-            max_attempts (int): Numero de veces que se intenta guardar un buffer de logs en caso de error.
+            max_attempts (int): Numero de veces que se intenta guardar un buffer de logs en caso de error (default=3).
         """
         if not self.buffer:
             return
 
         for attempt in range(max_attempts + 1):
             try:
-                self.collection.insert_many(self.buffer, ordered=False)
+                self.collection_logs.insert_many(self.buffer, ordered=False)
                 print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - INFO - {__name__} - Buffer de {len(self.buffer)} logs guardados correctamente.")
                 self.buffer.clear()
                 return
@@ -87,6 +94,7 @@ class MongoLoggingDBHandler(logging.Handler):
 
                 if attempt < max_attempts:
                     print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - WARNING - {__name__} - Reintentando guardar {len(self.buffer)} logs fallidos (Intento {attempt + 1}/{max_attempts}).")
+                    time.sleep(self.waiting_time)
                 else:
                     print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - ERROR - {__name__} - No se pudo guardar el buffer de logs.")
                     self.buffer.clear()
@@ -95,13 +103,13 @@ class MongoLoggingDBHandler(logging.Handler):
             except (OperationFailure, PyMongoError) as e:
                 print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - ERROR - {__name__} - No se pudo guardar el buffer de logs: {e}")
                 break
-            except Exception:
+            except Exception as e:
                 print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - ERROR - {__name__} - Error inesperado al procesar el log: {e}")
                 break
 
-    def close(self):
+    def close(self) -> None:
         """
-        Vacia el buffer antes de cerrar el hanldler.
+        Vacia el buffer antes de cerrar el handler.
         """
         self.flush()
         self.client.close()

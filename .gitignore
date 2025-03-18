@@ -1,9 +1,11 @@
 .venv/
 .env
 __pycache__
+.mypy_cache
 .vscode/
 COMPLEMENTOS/
 COMPRIMIDOS/
 DESCOMPRIMIDOS/
 utils/
 automation.log
+test.py
