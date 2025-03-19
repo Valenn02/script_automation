@@ -4,15 +4,16 @@ import logging
 import sys
 import os
 
-load_dotenv()
+load_dotenv(override=True)
 def configuracion_logging(level=logging.INFO) -> None:
     """Configuracion del logging para toda la aplicacion"""
 
     mongo_handler = MongoLoggingDBHandler(
         mongo_uri=os.getenv("CONNECTION_URL_MONGO", ""),
         db_name=os.getenv("DB_NAME", "BOA_VUELOS"),
-        collection_name="LOGS_PROCESADOS",
-        buffer_size=int(os.getenv("BUFFER_SIZE_LOGS", 50))
+        collection_logs="LOGS_PROCESADOS",
+        buffer_size=int(os.getenv("BUFFER_SIZE_LOGS", 40)),
+        waiting_time=float(os.getenv("WAITING_TIME", 1))
     )
 
     logging.basicConfig(

@@ -14,16 +14,18 @@ class MongoLoggingDBHandler(logging.Handler):
         db_name (str): Nombre de la base de datos en MongoDB.
         collection_logs (str): Nombre de la coleccion para guardar logs.
         buffer (List[Dict[str, Any]]): Buffer para almacenar logs.
-        buffer_size (int): Tamanio del buffer (default=30).
+        buffer_size (int): Tamanio del buffer (default=40).
         waiting_time (float): Tiempo en segundos de espera entre intentos (default=1).
+        max_attempts (int): Numero de veces que se intenta guardar un buffer de logs en caso de error (default=3).
     """
 
     def __init__(self,
                 mongo_uri: str,
                 db_name: str,
                 collection_logs: str,
-                buffer_size: int=30,
-                waiting_time: float=1.0
+                buffer_size: int=40,
+                waiting_time: float=1.0,
+                max_attempts: int=3
                 ) -> None:
         """
         El constructor para la clase MongoLoggingDBHandler.
@@ -34,6 +36,7 @@ class MongoLoggingDBHandler(logging.Handler):
             collection_logs (str): Nombre de la coleccion.
             buffer_size (int): Tamanio del buffer.
             waiting_time (float): Tiempo en segundos de espera entre intentos (default=1).
+            max_attempts (int): Numero de veces que se intenta guardar un buffer de logs en caso de error (default=3).
         """
         super().__init__()
         self.client: MongoClient=MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
@@ -42,6 +45,7 @@ class MongoLoggingDBHandler(logging.Handler):
         self.buffer: List[Dict[str, Any]]=[]
         self.buffer_size = buffer_size
         self.waiting_time = waiting_time
+        self.max_attempts = max_attempts
 
     def emit(self, record: logging.LogRecord) -> None:
         """
@@ -49,6 +53,11 @@ class MongoLoggingDBHandler(logging.Handler):
 
         Parameters:
             record (logging.LogRecord): Objeto LogRecord generado por logging.
+
+        Raises:
+            OperationFailure: Si falla la operacion con la base de datos.
+            PyMongoError: Para cualquier otro error relacionado con PyMongo.
+            Exception: En caso de cualquier otro error.
         """
         try:
             log_data = {
@@ -69,17 +78,20 @@ class MongoLoggingDBHandler(logging.Handler):
         except Exception as e:
             print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - ERROR - {__name__} - Error inesperado al procesar el log: {e}")
 
-    def flush(self, max_attempts: int=3) -> None:
+    def flush(self) -> None:
         """
         Vacia el buffer e inserta estos logs en MongoDB.
 
-        Parameters:
-            max_attempts (int): Numero de veces que se intenta guardar un buffer de logs en caso de error (default=3).
+        Raises:
+            BulkWriteError: Clase de excepción para errores de escritura masiva..
+            OperationFailure: Si falla la operacion con la base de datos.
+            PyMongoError: Para cualquier otro error relacionado con PyMongo.
+            Exception: En caso de cualquier otro error.
         """
         if not self.buffer:
             return
 
-        for attempt in range(max_attempts + 1):
+        for attempt in range(self.max_attempts + 1):
             try:
                 self.collection_logs.insert_many(self.buffer, ordered=False)
                 print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - INFO - {__name__} - Buffer de {len(self.buffer)} logs guardados correctamente.")
@@ -92,8 +104,8 @@ class MongoLoggingDBHandler(logging.Handler):
                 if not self.buffer:
                     return
 
-                if attempt < max_attempts:
-                    print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - WARNING - {__name__} - Reintentando guardar {len(self.buffer)} logs fallidos (Intento {attempt + 1}/{max_attempts}).")
+                if attempt < self.max_attempts:
+                    print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - WARNING - {__name__} - Reintentando guardar {len(self.buffer)} logs fallidos (Intento {attempt + 1}/{self.max_attempts}).")
                     time.sleep(self.waiting_time)
                 else:
                     print(f"{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')} - ERROR - {__name__} - No se pudo guardar el buffer de logs.")

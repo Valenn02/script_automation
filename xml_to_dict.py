@@ -1,113 +1,132 @@
 import xmltodict
 import json
-import logging
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Any
+from typing import Optional, Dict
+from standard_response import StandardResponse
 
 #DIRECTORIO_JSON = Path.cwd() / "JSON"
 
 class XMLConverter:
     """
-    Clase para convertir archivos XML a Diccionarios (y formatear archivos manifest).
+    Clase para convertir archivos XML a Diccionarios.
     """
-    
+
     #def __init__(self, directorio_json: Path = DIRECTORIO_JSON) -> None:
     #    self.directorio_json = directorio_json
     #    self.directorio_json.mkdir(parents=True, exist_ok=True)
     def __init__(self) -> None:
-        """
-        Inicializa el convertidor XML.
-        """
         pass
 
-    def _agregar_salto_de_linea(self, cadena: str) -> str:
+    def _add_line_break(self, text: str) -> StandardResponse:
         """
         Agrega un salto de linea a un cadena, o lo elimina si ya existe.
-        
-        Args:
-            cadena (str): Cadena de texto.
-            
-        Returns:
-            str: Si la cadena modificada.
-        """
-        return cadena + "\n" if not cadena.endswith("\n") else cadena.replace("\n", "")
 
-    def formatear_archivo_manifest(self, archivo: Path) -> Optional[str]:
+        Parameters:
+            text (str): Cadena de texto.
+
+        Returns:
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
+        """
+        return StandardResponse(
+            success=True,
+            data=text + "\n" if not text.endswith("\n") else text.replace("\n", ""),
+            message="Saltos de linea agregados correctamente."
+        )
+
+    def format_manifest_file(self, manifest_file: Path) -> StandardResponse:
         """
         Formatea el texto de un archivo .manifest.
-        
-        Args:
-            archivo (Path): Archivo Manifest.
-        
+
+        Parameters:
+            manifest_file (Path): Archivo Manifest.
+
         Returns:
-            str: Contenido del archivo.
-        
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
+
         Raises:
             FileNotFoundError: Si el archivo no existe.
             Exception: Si ocurre un error al transformar un archivo.
         """
         try:
-            if not archivo.suffix.lower() == ".manifest":
-                logging.warning(f"El archivo '{archivo.name}' no tiene formato .manifest")
-                return None
-            
-            logging.info(f"Procesando archivo '{archivo.name}'")
-            with open(archivo, "r", encoding="utf-8") as archivo_manifest:
+            if not manifest_file.suffix.lower() == ".manifest":
+                return StandardResponse(
+                    success=False,
+                    message=f"El archivo '{manifest_file.name}' no tiene formato correcto."
+                )
+
+            with open(manifest_file, "r", encoding="utf-8") as archivo_manifest:
                 contenido_manifest = archivo_manifest.read()
-            
+
             #with open((self.directorio_json / archivo.name), "w", encoding="utf-8") as manifest_final:
             #    manifest_final.write(self._formatear_archivo_manifest(contenido_manifest))
-                
-            manifest_data = "".join(list(map(self._agregar_salto_de_linea, contenido_manifest.split(" "))))
-            return manifest_data
-        
-        except FileNotFoundError:
-            logging.error(f"Archivo no encontrado: '{archivo}'")
-            return None
-        except Exception as e:
-            logging.exception(f"Error al procesar el archivo '{archivo.name}': {e}")
-            return None
 
-    def construir_lista(self, carpeta_path: Path) -> List[Path]:
+            manifest_data = list(map(self._add_line_break, contenido_manifest.split(" ")))
+            formatted_file = "".join([str(x.data) for x in manifest_data])
+            return StandardResponse(
+                success=True,
+                data=formatted_file,
+                message="Archivo manifest formateado correctamente."
+            )
+
+        except FileNotFoundError as e:
+            return StandardResponse(
+                success=False,
+                message=f"Archivo no encontrado: '{manifest_file}'",
+                error_details=str(e)
+            )
+        except Exception as e:
+            return StandardResponse(
+                success=False,
+                message=f"Error al procesar el archivo '{manifest_file.name}'.",
+                error_details=str(e)
+            )
+
+    def build_list(self, folder_path: Path) -> StandardResponse:
         """
         Construye la lista de archivos .DATA a procesar.
-        
-        Args:
-            directorio (Path): Directorio con los archivos a clasificar.
+
+        Parameters:
+            folder_path (Path): Directorio con los archivos a clasificar.
+
         Returns:
-            List[Path]: Lista con los archivos clasificados.
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
         """
-    
-        resultados: List[Path] = []
-        parejas_dict: Dict[str, Any] = self._emparejar_archivos_data(carpeta_path)
-        
+
+        resultados  = []
+        parejas_dict = self._data_file_matching(folder_path).data
+
         # implementar logica de combinacion de archivos (opcional)
         # --------------------------------------------------------
-        for par in parejas_dict.values():
-            if par["complemento"]:
-                resultados.append(par["complemento"])
-            elif par["original"]:
-                resultados.append(par["original"])
+        if isinstance(parejas_dict, dict):
+            for par in parejas_dict.values():
+                if par["complemento"]:
+                    resultados.append(par["complemento"])
+                elif par["original"]:
+                    resultados.append(par["original"])
         # --------------------------------------------------------
-        
-        manifest = list(carpeta_path.glob("*.manifest"))
-        return resultados + manifest
-    
-    def _emparejar_archivos_data(self, carpeta_path: Path) -> Dict[str, Dict[str, Optional[Path]]]:
+
+        manifest = list(folder_path.glob("*.manifest"))
+        return StandardResponse(
+            success=True,
+            data=resultados + manifest,
+            message="Lista con archivos .DATA contruida correctamente."
+        )
+
+    def _data_file_matching(self, folder_path: Path) -> StandardResponse:
         """
         Empareja los archivos .DATA (originales y complementos).
-        
-        Args:
-            directorio (Path): Directorio con los archivos a clasificar.
-        
+
+        Parameters:
+            folder_path (Path): Directorio con los archivos a clasificar.
+
         Returns:
-            Dict[str,Any]: Diccionario con los archivos originales y complementos emparejados.
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
         """
         parejas: Dict[str, Dict[str, Optional[Path]]] = {}
-        
-        for archivo_path in carpeta_path.glob("*.DATA"):
+
+        for archivo_path in folder_path.glob("*.DATA"):
             nombre_archivo = archivo_path.name
-            
+
             if ".1." in nombre_archivo:
                 base_nombre = nombre_archivo.replace(".1.", ".X.")
                 if base_nombre not in parejas:
@@ -120,20 +139,23 @@ class XMLConverter:
                     parejas[base_nombre] = {"original": None, "complemento": archivo_path}
                 else:
                     parejas[base_nombre]["complemento"] = archivo_path
-            else:
-                logging.warning(f"El archivo '{archivo_path.name}' no tiene una correcta nomenclatura en el nombre, ignorandolo ...")
-        return parejas
-    
-    def transformar_xml_a_dict(self, archivo: Path) -> Optional[str]:
+
+        return StandardResponse(
+            success=True,
+            data=parejas,
+            message="Archivos .DATA emparejados correctamente."
+        )
+
+    def transform_xml_to_dict(self, xml_file: Path) -> StandardResponse:
         """
         Transforma el contenido de un archivo XML a Diccionario.
-        
-        Args:
-            archivo (Path): Archivo XML a transformar.
-        
+
+        Parameters:
+            xml_file (Path): Archivo XML a transformar.
+
         Returns:
-            str: Contenido del archivo XML trasnformado.
-        
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
+
         Raises:
             FileNotFoundError: Si el archivo no existe.
             xmltodict.ParsingInterrupted: Si el arhcivo XML no tiene un formato valido.
@@ -141,12 +163,13 @@ class XMLConverter:
         """
 
         try:
-            if not archivo.suffix.lower() == ".data":
-                logging.warning(f"El archivo '{archivo.name}' no tiene la extension .DATA")
-                return None
-                
-            logging.info(f"Procesando archivo '{archivo.name}'")
-            with open(archivo, 'r', encoding="utf-8") as archivo_xml:
+            if not xml_file.suffix.lower() == ".data":
+                return StandardResponse(
+                    success=False,
+                    message=f"El archivo '{xml_file.name}' no tiene la extension .DATA"
+                )
+
+            with open(xml_file, 'r', encoding="utf-8") as archivo_xml:
                 xml_contenido = archivo_xml.read()
 
             xml_dict = xmltodict.parse(xml_contenido)
@@ -156,15 +179,28 @@ class XMLConverter:
 
             #with open((self.directorio_json / archivo_json_name), 'w', encoding="utf-8") as archivo_json:
             #    archivo_json.write(json_data)
-                
-            return dict_data
 
-        except FileNotFoundError:
-            logging.error(f"Archivo no encontrado: '{archivo}'.")
-            return None
+            return StandardResponse(
+                success=True,
+                data=dict_data,
+                message=f"Contenido XML transformado a diccionario correctamente."
+            )
+
+        except FileNotFoundError as e:
+            return StandardResponse(
+                success=True,
+                message=f"Archivo no encontrado: '{xml_file.name}'.",
+                error_details=str(e)
+            )
         except xmltodict.ParsingInterrupted as e:
-            logging.error(f"Error al parsear XML en '{archivo.name}': {e}.")
-            return None
+            return StandardResponse(
+                success=False,
+                message=f"Error al parsear XML en '{xml_file.name}': {e}.",
+                error_details=str(e)
+            )
         except Exception as e:
-            logging.exception(f"Error al procesar el archivo '{archivo.name}': {e}")
-            return None
+            return StandardResponse(
+                success=False,
+                message=f"Error al procesar el archivo '{xml_file.name}'.",
+                error_details=str(e)
+            )

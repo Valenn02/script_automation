@@ -1,51 +1,64 @@
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, Optional
-import logging
+from standard_response import StandardResponse
 
 class MetadataExtractor:
     """
-    Clase para extraer metadatos de archivos
+    Clase para extraer metadatos de archivos TAR.
     """
 
     def __init__(self) -> None:
         pass
 
-    def extractor_data_file(self, archivo: Path) -> Optional[Dict[str, Any]]:
+    def metadata_extractor(self, file: Path) -> StandardResponse:
         """
         Extrae los metadatos del archivo.
-        
-        Args:
-            archivo (Path): Ruta del archivo del cual se extraeran los metadatos.
-        
+
+        Parameters:
+            file (Path): Ruta del archivo del cual se extraeran los metadatos.
+
         Returns:
-            Dict[str,Any]: Diccionario con los metadatos del archivo.
-        
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
+
         Raises:
-            Exception: Si ocurre un error al extraer los metadatos.
+            OSError: Si el archivo no puede ser leido.
+            Exception: Si ocurre un error inesperado al extraer los metadatos.
         """
         try:
-            if not archivo.exists():
-                logging.warning(f"El archivo '{archivo}' no existe.")
-                return None
-            
-            if not archivo.is_file():
-                logging.warning(f"'{archivo.name}' no es un archivo.")
-                return None
-            
+            if not file.exists():
+                return StandardResponse(
+                    success=False,
+                    message=f"El archivo {file.name} no existe."
+                )
+
+            if not file.is_file():
+                return StandardResponse(
+                    success=False,
+                    message=f"'{file.name}' no es un archivo."
+                )
+
             metadatos = {
-                "nombre_archivo": archivo.name,
-                "tamanio_archivo": archivo.stat().st_size,
-                "fecha_creacion": datetime.fromtimestamp(archivo.stat().st_ctime).strftime("%Y-%m-%d %H:%M:%S"),
-                "fecha_modificacion": datetime.fromtimestamp(archivo.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
-                "tipo_archivo": archivo.suffix
+                "nombre_archivo": file.name,
+                "tamanio_archivo": file.stat().st_size,
+                "fecha_creacion": datetime.fromtimestamp(file.stat().st_ctime).strftime("%Y-%m-%d %H:%M:%S"),
+                "fecha_modificacion": datetime.fromtimestamp(file.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                "tipo_archivo": file.suffix
             }
-            logging.info(f"Metadatos extraidos de '{archivo.name}'")
-            return metadatos
-        
+            return StandardResponse(
+                success=True,
+                data=metadatos,
+                message=f"Metadatos extraidos de '{file.name}' correctamente."
+            )
+
         except OSError as e:
-            logging.error(f"Error al extraer metadatos del archivo {archivo}")
-            return None
+            return StandardResponse(
+                success=False,
+                message=f"Error al extraer metadatos del archivo '{file.name}'.",
+                error_details=str(e)
+            )
         except Exception as e:
-            logging.exception(f"Error inesperado al extraer metadatos del archivo {archivo}")
-            return None
+            return StandardResponse(
+                success=False,
+                message=f"Error inesperado al extraer metadatos del archivo '{file.name}'.",
+                error_details=str(e)
+            )
