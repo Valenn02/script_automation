@@ -183,7 +183,7 @@ class XMLConverter:
             return StandardResponse(
                 success=True,
                 data=dict_data,
-                message=f"Contenido XML transformado a diccionario correctamente."
+                message=f"Contenido XML del archivo '{xml_file.name}' transformado a diccionario correctamente."
             )
 
         except FileNotFoundError as e:

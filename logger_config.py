@@ -13,7 +13,8 @@ def configuracion_logging(level=logging.INFO) -> None:
         db_name=os.getenv("DB_NAME", "BOA_VUELOS"),
         collection_logs="LOGS_PROCESADOS",
         buffer_size=int(os.getenv("BUFFER_SIZE_LOGS", 40)),
-        waiting_time=float(os.getenv("WAITING_TIME", 1))
+        waiting_time=float(os.getenv("WAITING_TIME", 1)),
+        max_attempts=int(os.getenv("MAX_ATTEMPTS", 3))
     )
 
     logging.basicConfig(
