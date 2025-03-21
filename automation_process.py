@@ -17,7 +17,7 @@ import json
 import shutil
 import os
 
-load_dotenv()
+load_dotenv(override=True)
 BASE_DIR = Path.cwd()
 DIR_COMPRIMIDOS = BASE_DIR / "COMPRIMIDOS"
 DIR_DESCOMPRIMIDOS = BASE_DIR / "DESCOMPRIMIDOS"
@@ -101,6 +101,7 @@ class AutomationProcess:
 
         # --- conexion a MongoDB ---
         if not self._connect_to_mongodb():
+            logging.warning("No se pudo conectar con MongoDB.")
             shutil.rmtree(self.dir_descomprimidos)
             return datos_proceso
 
@@ -133,7 +134,7 @@ class AutomationProcess:
             logging.info(conexion.message)
             return True
         except Exception as e:
-            #logging.error(f"Error al conectar con MongoDB: {e}")
+            logging.error(f"Error al conectar con MongoDB: {e}")
             return False
 
     def _create_directories(self) -> None:

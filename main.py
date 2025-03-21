@@ -21,5 +21,5 @@ if __name__ == "__main__":
     minutos, segundos = divmod(tiempo_transcurrido, 60)
     horas, minutos = divmod(minutos, 60)
     logging.info(
-        f" - Tiempo total de ejecucion: {int(horas):02d}h {int(minutos):02d}m {segundos:.4f}s"
+        f"Tiempo total de ejecucion: {int(horas):02d}h {int(minutos):02d}m {segundos:.4f}s"
     )
