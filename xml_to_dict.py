@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from typing import Optional, Dict
 from standard_response import StandardResponse
+from collections.abc import Mapping
 
 #DIRECTORIO_JSON = Path.cwd() / "JSON"
 
@@ -81,7 +82,26 @@ class XMLConverter:
                 error_details=str(e)
             )
 
-    def build_list(self, folder_path: Path) -> StandardResponse:
+    def _merge_dicts_recursive(self, dict1, dict2):
+        """
+        Fusiona dos diccionarios de forma recursiva, actualizando valores existentes
+        y agregando nuevos datos.
+
+        Parameters:
+            dict1 (dict): Primer diccionario (base).
+            dict2 (dict): Segundo diccionario (datos nuevos).
+
+        Returns:
+            dict: Diccionario fusionado.
+        """
+        for key, value in dict2.items():
+            if key in dict1 and isinstance(dict1[key], Mapping) and isinstance(value, Mapping):
+                self._merge_dicts_recursive(dict1[key], value)
+            else:
+                dict1[key] = value
+        return dict1
+
+    def build_list_old(self, folder_path: Path) -> StandardResponse:
         """
         Construye la lista de archivos .DATA a procesar.
 
@@ -95,21 +115,67 @@ class XMLConverter:
         resultados  = []
         parejas_dict = self._data_file_matching(folder_path).data
 
-        # implementar logica de combinacion de archivos (opcional)
-        # --------------------------------------------------------
         if isinstance(parejas_dict, dict):
             for par in parejas_dict.values():
                 if par["complemento"]:
                     resultados.append(par["complemento"])
                 elif par["original"]:
                     resultados.append(par["original"])
-        # --------------------------------------------------------
 
         manifest = list(folder_path.glob("*.manifest"))
         return StandardResponse(
             success=True,
             data=resultados + manifest,
             message="Lista con archivos .DATA contruida correctamente."
+        )
+
+    def build_list(self, folder_path: Path) -> StandardResponse:
+        """
+        Construye la lista de archivos .DATA a procesar.
+
+        Parameters:
+            folder_path (Path): Directorio con los archivos a clasificar.
+
+        Returns:
+            StandardResponse: Clase estandar para encapsular respuestas de funciones.
+        """
+        resultados = []
+        parejas_dict = self._data_file_matching(folder_path).data
+
+        if isinstance(parejas_dict, dict):
+            for par in parejas_dict.values():
+                if par["complemento"] and par["original"]:
+                    try:
+                        with open(par["original"], "r", encoding="utf-8") as original_file:
+                            original_content = xmltodict.parse(original_file.read())
+                        with open(par["complemento"], "r", encoding="utf-8") as complemento_file:
+                            complemento_content = xmltodict.parse(complemento_file.read())
+
+                        fusion_content = self._merge_dicts_recursive(original_content, complemento_content)
+
+                        fusion_xml = xmltodict.unparse(fusion_content, pretty=True)
+
+                        fusion_file = folder_path / f"{par['original'].stem}_fusionado.DATA"
+                        with open(fusion_file, "w", encoding="utf-8") as fusion_file_obj:
+                            fusion_file_obj.write(fusion_xml)
+
+                        resultados.append(fusion_file)
+                    except Exception as e:
+                        return StandardResponse(
+                            success=False,
+                            message=f"Error al fusionar archivos XML: {e}",
+                            error_details=str(e)
+                        )
+                elif par["complemento"]:
+                    resultados.append(par["complemento"])
+                elif par["original"]:
+                    resultados.append(par["original"])
+
+        manifest = list(folder_path.glob("*.manifest"))
+        return StandardResponse(
+            success=True,
+            data=resultados + manifest,
+            message="Lista con archivos .DATA construida correctamente."
         )
 
     def _data_file_matching(self, folder_path: Path) -> StandardResponse:
@@ -188,7 +254,7 @@ class XMLConverter:
 
         except FileNotFoundError as e:
             return StandardResponse(
-                success=True,
+                success=False,
                 message=f"Archivo no encontrado: '{xml_file.name}'.",
                 error_details=str(e)
             )
